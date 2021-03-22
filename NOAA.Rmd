@@ -1,0 +1,288 @@
+# Severe weather events and their effect on health and the economy  
+
+
+## Purpose:
+
+
+To provide an overview and analysis of the effects that extreme weather events have
+on the health of the population and on the potential damage to property or crops.  This
+information can be helpful when prioritizing resources to prepare for imminent inclement weather.
+
+
+## Synopsis:  
+
+
+The U.S. National Oceanic and Atmospheric Administration (NOAA) maintains a storm
+database that tracks characteristics of major weather events in the United States.
+Some of the metrics observed include estimations of injuries, fatalities, and damage
+to property and crops.  We will be looking at these metrics in detail to determine
+which types of events most negatively impact human health and which types of events
+most negatively impact the economy.  
+
+
+## Applications and Languages Used:
+
+
+This was written using RStudio in mostly base R, with the help of the dpylr, tidyr, 
+and ggplot2 packages.  Knitted to HTML using the internal knitr capabilities and
+published to RPubs.
+
+
+## Data Processing:  
+
+
+First, we set our working directory to receive the file.  
+```{r results='hide', message=FALSE, warning=FALSE}
+path <- "/home/benschnable/R/ReproducibleFinal"
+if (!dir.exists(path)) { dir.create(path) }
+setwd(path)
+```
+
+Then, download the file from the internet and load the data into R.  
+```{r message=FALSE, warning=FALSE, cache=TRUE, results='hide'}
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+if (!file.exists(paste0(path, "/stormdata.csv.bz2"))) {
+download.file(url, destfile = "stormdata.csv.bz2") }
+stormdata <- read.csv("stormdata.csv.bz2")
+```
+
+We will need the following libraries for our analysis and subsequent plotting.
+```{r results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+To first address the affect of extreme weather on human health, we will subset the
+initial dataframe to take only those rows that contain non-zero numbers of fatalities or
+injuries.  Then we will add a column that sums the amount of fatalities and injuries per
+event so we can see the overall impact that each even has on human health.
+```{r cache=TRUE}
+health <- filter(stormdata, FATALITIES > 0 | INJURIES > 0)
+health <- select(health, c(STATE, EVTYPE, FATALITIES, INJURIES))
+for ( i in seq_along(health[ ,1]) ) {
+        health$HARM[i] <- sum(health$FATALITIES[i] + health$INJURIES[i])
+}
+dim(health)
+```
+
+Here we see the dimensions of our new dataframe.  When we look at the summary statistics of event types (the EVTYPE variable), we see that there are several event types that are duplicated, but formatted differently, and that the top 20 types seem to have the most
+representation in the population.  By creating a character vector of these top 20 events,
+we can further subset the data.
+```{r}
+summary(health$EVTYPE)
+topconditions <- c("tornado", "lightning", "tstm wind", "flash flood",
+                   "thunderstorm wind", "excessive heat", "high wind",
+                   "flood", "rip current", "thunderstorm winds", "hail",
+                   "avalanche", "rip currents", "winter storm", "strong wind",
+                   "heat", "wildfire", "heavy snow", "wild/forest fire", "heavy rain")
+health$EVTYPE <- tolower(health$EVTYPE)
+health <- filter(health, EVTYPE %in% topconditions)
+dim(health)
+```
+
+Our new dataset has 20206 of the original 21929 observations, so it is safe to say that
+this is a good representative sample of the data.  Next we will split this dataset by
+the EVTYPE variable so that we can combine observations that belong together (i.e. 
+"tstm wind" and "thunderstorm winds" etc.)
+```{r}
+tmp <- split(health, health$EVTYPE)
+h <- rbind(tmp[[2]], tmp[[6]])
+h$EVTYPE <- "excessive heat"
+f <- rbind(tmp[[3]], tmp[[4]])
+f$EVTYPE <- "flooding"
+t <- rbind(tmp[[9]], tmp[[13]], tmp[[14]], tmp[[15]], tmp[[17]])
+t$EVTYPE <- "thunderstorm winds"
+c <- rbind(tmp[[11]], tmp[[12]])
+c$EVTYPE <- "rip currents"
+w <- rbind(tmp[[18]], tmp[[19]])
+w$EVTYPE <- "wildfire"
+finaldf <- rbind(tmp[[1]], tmp[[5]], tmp[[7]], tmp[[8]], tmp[[10]], tmp[[16]],
+                 tmp[[20]], h, f, t, c, w)
+```
+
+Finally, we will group this dataset by event type and look at some summary statistics
+that we can use to visualize what is going on.
+```{r}
+plotdata <- finaldf %>%
+        group_by(EVTYPE) %>%
+        summarize(count = n(),
+                  sum = sum(HARM),
+                  mean = mean(HARM))
+plotdata
+```
+
+
+Next we will take a similar approach to looking at the data that pertains strictly
+to the economic impact of extreme weather events - damage to property and damage to crops.
+
+```{r}
+economic <- filter(stormdata, PROPDMG > 0 | CROPDMG > 0)
+economic <- select(economic, c(STATE, EVTYPE, PROPDMG, PROPDMGEXP,
+                               CROPDMG, CROPDMGEXP))
+dim(economic)
+summary(economic$EVTYPE)
+```
+
+As before, we will take the top events (this time there are 23 at the top that seem
+to need further processing/combining).
+```{r}
+topconditions2 <- c("tstm wind", "thunderstorm wind", "tornado", "hail",
+                    "flash flood", "thunderstorm winds", "lightning", "flood",
+                    "high wind", "strong wind", "winter storm", "heavy snow",
+                    "heavy rain", "wildfire", "urban/sml stream fld", "ice storm",
+                    "high winds", "tstm wind/hail", "tropical storm",
+                    "winter weather", "wild/forest fire", "flash flooding",
+                    "flood/flash flood")
+economic$EVTYPE <- tolower(economic$EVTYPE)
+economic <- filter(economic, EVTYPE %in% topconditions2)
+dim(economic)
+```
+
+And again, our subset shows 240486/245031 initial observations, making this a good
+representative sample.  As before, we will split this dataframe by the EVTYPE variable
+and reconstruct it by combining like elements.
+```{r}
+tmp2 <- split(economic, economic$EVTYPE)
+f <- rbind(tmp2[[1]], tmp2[[2]], tmp2[[3]], tmp2[[4]], tmp2[[19]])
+f$EVTYPE <- "flooding"
+h <- rbind(tmp2[[5]], tmp2[[18]])
+h$EVTYPE <- "hail"
+w <- rbind(tmp2[[8]], tmp2[[9]], tmp2[[12]], tmp2[[13]], tmp2[[14]], tmp2[[17]])
+w$EVTYPE <- "wind damage"
+r <- rbind(tmp2[[20]], tmp2[[21]])
+r$EVTYPE <- "wildfire"
+e <- rbind(tmp2[[22]], tmp2[[23]])
+e$EVTYPE <- "winter storm"
+
+econdf <- rbind(tmp2[[6]], tmp2[[7]], tmp2[[10]], tmp2[[11]], tmp2[[15]], tmp2[[16]],
+                f, h, w, r, e)
+```
+
+An additional challenge here is to find the true costs of the property and crop damage.
+The table shows two columns relating to each variable - the cost coefficient (PROPDMG/CROPDMG), and the exponent to which each is raised (PROPDMGEXP/CROPDMGEXP).
+To do this, we convert the exponent strings to lowercase and see which unique values
+exists in the dataset.  This lets us know how to prepare our for loop with if/else
+conditions to create each element of the new total cost column.  This process for both
+the property damage and the crop damage is the most expensive (i.e. calculation heavy)
+part of the whole analysis.
+```{r cache=TRUE}
+econdf$PROPDMGEXP <- tolower(econdf$PROPDMGEXP)
+econdf$CROPDMGEXP <- tolower(econdf$CROPDMGEXP)
+
+unique(econdf$PROPDMGEXP)
+unique(econdf$CROPDMGEXP)
+
+for ( i in seq_along(econdf[ ,1]) ) {
+        if ( econdf$PROPDMGEXP[i] == "k") {
+                econdf$TOTALPROP[i] <- (econdf$PROPDMG[i] * 1000)
+        }
+        else if ( econdf$PROPDMGEXP[i] == "m") {
+                econdf$TOTALPROP[i] <- (econdf$PROPDMG[i] * 1000000) 
+        }
+        else if ( econdf$PROPDMGEXP[i] == "h") {
+                econdf$TOTALPROP[i] <- (econdf$PROPDMG[i] * 100)
+        }
+        else if ( econdf$PROPDMGEXP[i] == "b") {
+                econdf$TOTALPROP[i] <- (econdf$PROPDMG[i] * 1000000000)
+        }
+        else if ( econdf$PROPDMGEXP[i] %in% c("", "+", "-", "?")) {
+                econdf$TOTALPROP[i] <- econdf$PROPDMG[i] 
+        }
+        else { econdf$TOTALPROP[i] <- (econdf$PROPDMG[i] *
+                                               10^(as.numeric(econdf$PROPDMGEXP[i])))
+        }
+}
+```
+
+```{r cache=TRUE}
+for ( i in seq_along(econdf[ ,1]) ) {
+        if ( econdf$CROPDMG[i] > 0 ) {
+                if ( econdf$CROPDMGEXP[i] == "k") {
+                econdf$TOTALCROP[i] <- (econdf$CROPDMG[i] * 1000)
+                }
+                else if ( econdf$CROPDMGEXP[i] == "m") {
+                econdf$TOTALCROP[i] <- (econdf$CROPDMG[i] * 1000000) 
+                }
+                else if ( econdf$CROPDMGEXP[i] == "h") {
+                econdf$TOTALCROP[i] <- (econdf$CROPDMG[i] * 100)
+                }
+                else if ( econdf$CROPDMGEXP[i] == "b") {
+                econdf$TOTALCROP[i] <- (econdf$CROPDMG[i] * 1000000000)
+                }
+                else if ( econdf$CROPDMGEXP[i] %in% c("", "+", "-", "?")) {
+                econdf$TOTALCROP[i] <- econdf$CROPDMG[i] 
+                }
+                else { econdf$TOTALCROP[i] <- (econdf$CROPDMG[i] *
+                                                       10^(as.numeric(econdf$CROPDMGEXP[i])))
+                }
+        }
+        else { econdf$TOTALCROP[i] <- 0 }
+}
+```
+
+Since we will be looking at two variables in our economic dataset (TOTALPROP and TOTALCROP),
+we will have to do one last transform to make this a long and tidy dataframe, ready
+to be plotted.  
+```{r}
+econplot <- select(econdf, c(EVTYPE, TOTALPROP, TOTALCROP)) %>%
+        gather(event, total, TOTALCROP:TOTALPROP) %>%
+        group_by(EVTYPE, event) %>%
+        summarize(sum = sum(total))
+econplot
+```
+
+We will be looking at paired bar charts, so sorting the results and taking the top 6
+would be prudent, as to avoid overcrowding the visualization.
+```{r}
+econplot %>% arrange(desc(sum)) %>% filter(event == "TOTALPROP")
+econplot %>% arrange(desc(sum)) %>% filter(event == "TOTALCROP")
+lab <- c("flooding", "tornado", "hail", "wind damage", "ice storm", "tropical storm")
+```
+
+There is some overlap in the top 6 of each category, so we choose those events to
+examine in our visualization.  
+
+
+## Results:  
+
+
+Looking at the dataset that pertains to effects on human health, we can see that there
+are a disproportionate amount of data concerning tornadoes.  Therefore, showing the
+average number of injuries or fatalities per extreme weather event seemed the more
+prudent decision.
+```{r}
+g <- ggplot(plotdata, aes(x = mean, y = reorder(EVTYPE, mean)))
+g + geom_col(fill = "darkred") + labs(y = "", x = "",
+                caption = "Average number of injuries/fatalities per event") +
+        theme_minimal() + theme(axis.text = element_text(color = "black",
+                                                         size = 9, face = "bold"))
+```
+
+Now we see that, on average, the most fatalities and injuries are a result of incidents
+of excessive heat, closely followed by tornadoes.  
+
+Finally, we will look at the dataset showing the adverse economic effects of extreme
+weather incidents.  
+```{r}
+
+xl <- c(0, 50, 100, 150) ## Label ticks determined by initial exploratory
+                         ## plots of the data
+
+econplot %>% filter(EVTYPE %in% lab) %>%
+        ggplot(aes(x = sum, y = reorder(EVTYPE, sum), fill = event)) +
+        geom_bar(stat = "identity", position = "dodge") +
+        scale_fill_manual(values = c("forestgreen", "black"),
+                          labels = c("Crops", "Property")) +
+        scale_x_continuous(labels = paste0("$", xl, "B")) +
+        labs(y = "", x = "", fill = "Type of Damage",
+             caption = "Total damage (in dollars) by event type") +
+        theme_minimal() + theme(legend.position = "top",
+                                axis.text = element_text(color = "black",
+                                                size = 9, face = "bold")) +
+        guides(fill = guide_legend(reverse = TRUE))
+```
+
+We can see that damage caused by flooding has had the biggest economic impact in
+both categories, and that ice storms seem to be the only event type where there
+is more anticipated crop damage than property damage.
